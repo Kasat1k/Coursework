@@ -49,7 +49,43 @@ def compute_gradients(img, alpha):
     return G, theta
 
 def non_maximal_suppression(G, theta):
-    return G
+    M, N = G.shape
+    suppressed = np.zeros((M, N))
+    angle = theta * 180. / np.pi
+    angle[angle < 0] += 180
+
+    for i in range(1, M - 1):
+        for j in range(1, N - 1):
+            try:
+                q = 255
+                r = 255
+                
+                # Горизонтальна орієнтація (0 градусів)
+                if (0 <= angle[i, j] < 22.5) or (157.5 <= angle[i, j] <= 180):
+                    q = G[i, j + 1]
+                    r = G[i, j - 1]
+                # Діагональна орієнтація 135 градусів
+                elif (22.5 <= angle[i, j] < 67.5):
+                    q = G[i + 1, j - 1]
+                    r = G[i - 1, j + 1]
+                # Вертикальна орієнтація 90 градусів
+                elif (67.5 <= angle[i, j] < 112.5):
+                    q = G[i + 1, j]
+                    r = G[i - 1, j]
+                # Діагональна орієнтація 45 градусів
+                elif (112.5 <= angle[i, j] < 157.5):
+                    q = G[i - 1, j - 1]
+                    r = G[i + 1, j + 1]
+
+                if (G[i, j] >= q) and (G[i, j] >= r):
+                    suppressed[i, j] = G[i, j]
+                else:
+                    suppressed[i, j] = 0
+
+            except IndexError as e:
+                pass
+
+    return suppressed
 
 def threshold_and_link_edges(G, threshold):
     return G > threshold
@@ -61,6 +97,7 @@ def edge_detection(image_path, alpha, sigma=1, threshold=0.5):
     G_suppressed = non_maximal_suppression(G, theta)
     edges = threshold_and_link_edges(G_suppressed, threshold)
     
+    # Відображення початкового зображення і зображення з визначеними контурами
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
     ax1.imshow(img, cmap='gray')
     ax1.set_title('Початкове зображення')
@@ -75,6 +112,7 @@ def open_image(root, img_label):
         img_label.config(image=ImageTk.PhotoImage(Image.fromarray((img * 255).astype(np.uint8))))
         img_label.image = ImageTk.PhotoImage(Image.fromarray((img * 255).astype(np.uint8)))
         
+        # Додамо виклик функції edge_detection з потрібними параметрами
         edge_detection(file_path, alpha=float(alpha_var.get()), sigma=1, threshold=float(threshold_var.get()))
 
 root = tk.Tk()
@@ -88,7 +126,7 @@ open_button.pack()
 
 alpha_label = tk.Label(root, text="Alpha:")
 alpha_label.pack()
-alpha_var = tk.StringVar(root, value="0.5")
+alpha_var = tk.StringVar(root, value="0.4")
 alpha_entry = tk.Entry(root, textvariable=alpha_var)
 alpha_entry.pack()
 
