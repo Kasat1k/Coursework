@@ -1,28 +1,28 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter, convolve
 from scipy.special import gamma
-from PIL import Image, ImageTk
-import tkinter as tk
-from tkinter import filedialog
+import numpy as np
+from PIL import Image
 import matplotlib.pyplot as plt
+
+import cv2
 
 def load_image(image_path):
     img = Image.open(image_path)
     img = np.asarray(img) / 255.0
     return img
 
-def apply_gaussian_filter(img, sigma=1):
+def apply_gaussian_filter(img, sigma=2):
     if sigma > 0:
         img_filtered = gaussian_filter(img, sigma=sigma)
     else:
         img_filtered = img
     return img_filtered
 
-def fractional_derivative(img, alpha, axis):
+def fractional_derivative(img, alpha, axis, kernel_size):
     if axis not in [0, 1]:
         raise ValueError("Вісь повинна бути 0 (в напрямку x) або 1 (в напрямку y)")
     
-    kernel_size = 21
     half_size = kernel_size // 2
     
     n = np.arange(-half_size, half_size + 1)
@@ -36,9 +36,9 @@ def fractional_derivative(img, alpha, axis):
     
     return convolve(img, kernel, mode='nearest')
 
-def compute_gradients(img, alpha):
-    fd_x_r, fd_x_g, fd_x_b = [fractional_derivative(img[:, :, i], alpha, axis=0) for i in range(3)]
-    fd_y_r, fd_y_g, fd_y_b = [fractional_derivative(img[:, :, i], alpha, axis=1) for i in range(3)]
+def compute_gradients(img, alpha, kernel_size):
+    fd_x_r, fd_x_g, fd_x_b = [fractional_derivative(img[:, :, i], alpha, axis=0, kernel_size=kernel_size) for i in range(3)]
+    fd_y_r, fd_y_g, fd_y_b = [fractional_derivative(img[:, :, i], alpha, axis=1, kernel_size=kernel_size) for i in range(3)]
     
     G_x = np.sqrt(fd_x_r**2 + fd_x_g**2 + fd_x_b**2)
     G_y = np.sqrt(fd_y_r**2 + fd_y_g**2 + fd_y_b**2)
@@ -60,19 +60,15 @@ def non_maximal_suppression(G, theta):
                 q = 255
                 r = 255
                 
-                # Горизонтальна орієнтація (0 градусів)
                 if (0 <= angle[i, j] < 22.5) or (157.5 <= angle[i, j] <= 180):
                     q = G[i, j + 1]
                     r = G[i, j - 1]
-                # Діагональна орієнтація 135 градусів
                 elif (22.5 <= angle[i, j] < 67.5):
                     q = G[i + 1, j - 1]
                     r = G[i - 1, j + 1]
-                # Вертикальна орієнтація 90 градусів
                 elif (67.5 <= angle[i, j] < 112.5):
                     q = G[i + 1, j]
                     r = G[i - 1, j]
-                # Діагональна орієнтація 45 градусів
                 elif (112.5 <= angle[i, j] < 157.5):
                     q = G[i - 1, j - 1]
                     r = G[i + 1, j + 1]
@@ -90,50 +86,20 @@ def non_maximal_suppression(G, theta):
 def threshold_and_link_edges(G, threshold):
     return G > threshold
 
-def edge_detection(image_path, alpha, sigma=1, threshold=0.5):
+def edge_detection(image_path, alpha, sigma, threshold, kernel_size):  
     img = load_image(image_path)
     img_filtered = apply_gaussian_filter(img, sigma)
-    G, theta = compute_gradients(img_filtered, alpha)
+    G, theta = compute_gradients(img_filtered, alpha, kernel_size)
     G_suppressed = non_maximal_suppression(G, theta)
     edges = threshold_and_link_edges(G_suppressed, threshold)
     
-    # Відображення початкового зображення і зображення з визначеними контурами
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+    edges_opencv = cv2.Canny((img_filtered * 255).astype(np.uint8), 50, 150)  
+    
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
     ax1.imshow(img, cmap='gray')
     ax1.set_title('Початкове зображення')
     ax2.imshow(edges, cmap='gray')
-    ax2.set_title('Зображення з контурами')
+    ax2.set_title('Зображення з контурами (моя реалізація)')
+    ax3.imshow(edges_opencv, cmap='gray')
+    ax3.set_title('Зображення з контурами (OpenCV)')
     plt.show()
-
-def open_image(root, img_label):
-    file_path = filedialog.askopenfilename()
-    if file_path:
-        img = load_image(file_path)
-        img_label.config(image=ImageTk.PhotoImage(Image.fromarray((img * 255).astype(np.uint8))))
-        img_label.image = ImageTk.PhotoImage(Image.fromarray((img * 255).astype(np.uint8)))
-        
-        # Додамо виклик функції edge_detection з потрібними параметрами
-        edge_detection(file_path, alpha=float(alpha_var.get()), sigma=1, threshold=float(threshold_var.get()))
-
-root = tk.Tk()
-root.title("Edge Detection")
-root.geometry("800x600")
-img_label = tk.Label(root)
-img_label.pack()
-
-open_button = tk.Button(root, text="Open Image", command=lambda: open_image(root, img_label))
-open_button.pack()
-
-alpha_label = tk.Label(root, text="Alpha:")
-alpha_label.pack()
-alpha_var = tk.StringVar(root, value="0.4")
-alpha_entry = tk.Entry(root, textvariable=alpha_var)
-alpha_entry.pack()
-
-threshold_label = tk.Label(root, text="Threshold:")
-threshold_label.pack()
-threshold_var = tk.StringVar(root, value="0.1")
-threshold_entry = tk.Entry(root, textvariable=threshold_var)
-threshold_entry.pack()
-
-root.mainloop()
